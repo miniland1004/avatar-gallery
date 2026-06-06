@@ -38,50 +38,51 @@ const ATTACK_ACTIONS = [
 ];
 
 const ACTION_LABELS = {
-  stand1: "서기 1",
-  stand2: "서기 2",
-  walk1: "걷기 1",
-  walk2: "걷기 2",
+  stand1: "기본 자세 1",
+  stand2: "기본 자세 2",
+  walk1: "이동 1",
+  walk2: "이동 2",
   jump: "점프",
   sit: "앉기",
-  ladder: "사다리",
-  rope: "로프",
+  ladder: "사다리 타기",
+  rope: "로프 타기",
   fly: "비행",
-  prone: "엎드림",
-  heal: "회복",
-  alert: "경고",
-  swingO1: "Swing O1",
-  swingO2: "Swing O2",
-  swingO3: "Swing O3",
-  swingOF: "Swing OF",
-  swingP1: "Swing P1",
-  swingP2: "Swing P2",
-  swingPF: "Swing PF",
-  swingT1: "Swing T1",
-  swingT2: "Swing T2",
-  swingT3: "Swing T3",
-  swingTF: "Swing TF",
-  stabO1: "Stab O1",
-  stabO2: "Stab O2",
-  stabOF: "Stab OF",
-  stabT1: "Stab T1",
-  stabT2: "Stab T2",
-  stabTF: "Stab TF",
-  shoot1: "Shoot 1",
-  shoot2: "Shoot 2",
-  shootF: "Shoot F",
-  proneStab: "Prone Stab",
+  prone: "엎드리기",
+  heal: "회복 모션",
+  alert: "전투 대기",
+  swingO1: "한손무기 휘두르기 1",
+  swingO2: "한손무기 휘두르기 2",
+  swingO3: "한손무기 휘두르기 3",
+  swingOF: "한손무기 빠른 휘두르기",
+  swingP1: "폴암 휘두르기 1",
+  swingP2: "폴암 휘두르기 2",
+  swingPF: "폴암 빠른 휘두르기",
+  swingT1: "두손무기 휘두르기 1",
+  swingT2: "두손무기 휘두르기 2",
+  swingT3: "두손무기 휘두르기 3",
+  swingTF: "두손무기 빠른 휘두르기",
+  stabO1: "한손무기 찌르기 1",
+  stabO2: "한손무기 찌르기 2",
+  stabOF: "한손무기 빠른 찌르기",
+  stabT1: "두손무기 찌르기 1",
+  stabT2: "두손무기 찌르기 2",
+  stabTF: "두손무기 빠른 찌르기",
+  shoot1: "사격 1",
+  shoot2: "사격 2",
+  shootF: "빠른 사격",
+  proneStab: "엎드려 찌르기",
 };
 
 const KIND_LABELS = {
   all: "전체",
-  outfit: "기본",
-  weapon: "무기",
-  cape: "망토",
-  body: "바디",
+  outfit: "모자",
+  weapon: "모자",
+  cape: "모자",
+  body: "모자",
 };
 
 const manifest = window.AVATAR_MANIFEST;
+const itemNumbers = new Map(manifest.items.map((item, index) => [item.id, index + 1]));
 
 const els = {
   itemCount: document.querySelector("#itemCount"),
@@ -114,6 +115,24 @@ const state = {
 
 function byId(id) {
   return manifest.items.find((item) => item.id === id);
+}
+
+function byNo(no) {
+  const index = Number(no) - 1;
+  return Number.isInteger(index) ? manifest.items[index] : null;
+}
+
+function itemNo(item) {
+  return itemNumbers.get(item.id) || 0;
+}
+
+function itemLabel(item) {
+  return `미니랜드 No.${String(itemNo(item)).padStart(2, "0")}`;
+}
+
+function itemSearchText(item) {
+  const no = itemNo(item);
+  return `${item.id} ${no} ${String(no).padStart(2, "0")}`;
 }
 
 function orderedActions(item, actions) {
@@ -157,7 +176,7 @@ function setAction(action) {
 }
 
 function renderFilters() {
-  const kinds = ["all", ...new Set(manifest.items.map((item) => item.kind))];
+  const kinds = ["all"];
   els.filterRow.innerHTML = "";
 
   kinds.forEach((kind) => {
@@ -177,9 +196,8 @@ function renderFilters() {
 function renderGallery() {
   const query = state.query.trim();
   const items = manifest.items.filter((item) => {
-    const matchesQuery = !query || item.id.includes(query);
-    const matchesKind = state.filter === "all" || item.kind === state.filter;
-    return matchesQuery && matchesKind;
+    const matchesQuery = !query || itemSearchText(item).includes(query);
+    return matchesQuery;
   });
 
   els.galleryGrid.innerHTML = "";
@@ -187,13 +205,14 @@ function renderGallery() {
 
   const fragment = document.createDocumentFragment();
   items.forEach((item) => {
+    const label = itemLabel(item);
     const button = document.createElement("button");
     button.type = "button";
     button.className = `item-card${state.item?.id === item.id ? " is-active" : ""}`;
-    button.setAttribute("aria-label", `${item.id} 선택`);
+    button.setAttribute("aria-label", `${label} 선택`);
     button.innerHTML = `
       <img src="${item.icon}" alt="" loading="lazy">
-      <span>${item.id}</span>
+      <span>${label}</span>
     `;
     button.addEventListener("click", () => setItem(item));
     fragment.appendChild(button);
@@ -224,10 +243,10 @@ function renderSelection() {
   const item = state.item;
   const frames = currentFrames();
 
-  els.selectedTitle.textContent = item.id;
-  els.selectedKind.textContent = KIND_LABELS[item.kind] || item.kind;
+  els.selectedTitle.textContent = itemLabel(item);
+  els.selectedKind.textContent = "모자";
 
-  fillSelect(els.moveSelect, item, MOVE_ACTIONS, "움직임 없음");
+  fillSelect(els.moveSelect, item, MOVE_ACTIONS, "일반 모션 없음");
   fillSelect(els.attackSelect, item, ATTACK_ACTIONS, "공격 없음");
   els.moveSelect.value = MOVE_ACTIONS.includes(state.action) ? state.action : "";
   els.attackSelect.value = ATTACK_ACTIONS.includes(state.action) ? state.action : "";
@@ -304,8 +323,9 @@ function preloadAction() {
 function syncUrl() {
   try {
     const url = new URL(window.location.href);
-    url.searchParams.set("item", state.item.id);
-    url.searchParams.set("motion", state.action);
+    url.searchParams.set("no", String(itemNo(state.item)).padStart(2, "0"));
+    url.searchParams.delete("item");
+    url.searchParams.delete("motion");
     window.history.replaceState(null, "", url);
   } catch {
     // Some browsers restrict history changes on local file URLs.
@@ -314,9 +334,10 @@ function syncUrl() {
 
 function initFromUrl() {
   const params = new URLSearchParams(window.location.search);
+  const requestedNo = params.get("no");
   const requestedItem = params.get("item");
   const requestedMotion = params.get("motion");
-  const item = byId(requestedItem) || manifest.items[0];
+  const item = byNo(requestedNo) || byId(requestedItem) || manifest.items[0];
   setItem(item, requestedMotion);
 }
 
@@ -362,7 +383,7 @@ function init() {
     return;
   }
 
-  els.itemCount.textContent = `${manifest.totalItems.toLocaleString("ko-KR")}개 아이템`;
+  els.itemCount.textContent = `미니랜드 ${manifest.totalItems.toLocaleString("ko-KR")}종`;
   renderFilters();
   bindEvents();
   initFromUrl();
