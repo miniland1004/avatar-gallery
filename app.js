@@ -48,8 +48,8 @@ const ACTION_LABELS = {
   rope: "로프 타기",
   fly: "비행",
   prone: "엎드리기",
-  heal: "회복 모션",
-  alert: "전투 대기",
+  heal: "회복",
+  alert: "기본 자세",
   swingO1: "한손무기 휘두르기 1",
   swingO2: "한손무기 휘두르기 2",
   swingO3: "한손무기 휘두르기 3",
@@ -69,7 +69,7 @@ const ACTION_LABELS = {
   stabTF: "두손무기 빠른 찌르기",
   shoot1: "사격 1",
   shoot2: "사격 2",
-  shootF: "빠른 사격",
+  shootF: "공격 모션",
   proneStab: "엎드려 찌르기",
 };
 
