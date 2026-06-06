@@ -1,0 +1,371 @@
+const MOVE_ACTIONS = [
+  "stand1",
+  "stand2",
+  "walk1",
+  "walk2",
+  "jump",
+  "sit",
+  "ladder",
+  "rope",
+  "fly",
+  "prone",
+  "heal",
+  "alert",
+];
+
+const ATTACK_ACTIONS = [
+  "swingO1",
+  "swingO2",
+  "swingO3",
+  "swingOF",
+  "swingP1",
+  "swingP2",
+  "swingPF",
+  "swingT1",
+  "swingT2",
+  "swingT3",
+  "swingTF",
+  "stabO1",
+  "stabO2",
+  "stabOF",
+  "stabT1",
+  "stabT2",
+  "stabTF",
+  "shoot1",
+  "shoot2",
+  "shootF",
+  "proneStab",
+];
+
+const ACTION_LABELS = {
+  stand1: "서기 1",
+  stand2: "서기 2",
+  walk1: "걷기 1",
+  walk2: "걷기 2",
+  jump: "점프",
+  sit: "앉기",
+  ladder: "사다리",
+  rope: "로프",
+  fly: "비행",
+  prone: "엎드림",
+  heal: "회복",
+  alert: "경고",
+  swingO1: "Swing O1",
+  swingO2: "Swing O2",
+  swingO3: "Swing O3",
+  swingOF: "Swing OF",
+  swingP1: "Swing P1",
+  swingP2: "Swing P2",
+  swingPF: "Swing PF",
+  swingT1: "Swing T1",
+  swingT2: "Swing T2",
+  swingT3: "Swing T3",
+  swingTF: "Swing TF",
+  stabO1: "Stab O1",
+  stabO2: "Stab O2",
+  stabOF: "Stab OF",
+  stabT1: "Stab T1",
+  stabT2: "Stab T2",
+  stabTF: "Stab TF",
+  shoot1: "Shoot 1",
+  shoot2: "Shoot 2",
+  shootF: "Shoot F",
+  proneStab: "Prone Stab",
+};
+
+const KIND_LABELS = {
+  all: "전체",
+  outfit: "기본",
+  weapon: "무기",
+  cape: "망토",
+  body: "바디",
+};
+
+const manifest = window.AVATAR_MANIFEST;
+
+const els = {
+  itemCount: document.querySelector("#itemCount"),
+  searchInput: document.querySelector("#searchInput"),
+  selectedTitle: document.querySelector("#selectedTitle"),
+  selectedKind: document.querySelector("#selectedKind"),
+  spriteStage: document.querySelector("#spriteStage"),
+  moveSelect: document.querySelector("#moveSelect"),
+  attackSelect: document.querySelector("#attackSelect"),
+  playButton: document.querySelector("#playButton"),
+  prevButton: document.querySelector("#prevButton"),
+  nextButton: document.querySelector("#nextButton"),
+  speedRange: document.querySelector("#speedRange"),
+  frameLabel: document.querySelector("#frameLabel"),
+  filterRow: document.querySelector("#filterRow"),
+  galleryGrid: document.querySelector("#galleryGrid"),
+  emptyState: document.querySelector("#emptyState"),
+};
+
+const state = {
+  item: null,
+  action: null,
+  query: "",
+  filter: "all",
+  frame: 0,
+  playing: true,
+  delay: Number(els.speedRange.value),
+  timer: null,
+};
+
+function byId(id) {
+  return manifest.items.find((item) => item.id === id);
+}
+
+function orderedActions(item, actions) {
+  return actions.filter((action) => item.actions[action]?.length);
+}
+
+function firstAction(item, preferred) {
+  if (preferred && item.actions[preferred]?.length) {
+    return preferred;
+  }
+
+  return orderedActions(item, MOVE_ACTIONS)[0] || orderedActions(item, ATTACK_ACTIONS)[0];
+}
+
+function actionLabel(action) {
+  return ACTION_LABELS[action] || action;
+}
+
+function setItem(item, action = state.action) {
+  state.item = item;
+  state.action = firstAction(item, action);
+  state.frame = 0;
+  renderSelection();
+  renderGallery();
+  preloadAction();
+  restartTimer();
+  syncUrl();
+}
+
+function setAction(action) {
+  if (!state.item?.actions[action]?.length) {
+    return;
+  }
+
+  state.action = action;
+  state.frame = 0;
+  renderSelection();
+  preloadAction();
+  restartTimer();
+  syncUrl();
+}
+
+function renderFilters() {
+  const kinds = ["all", ...new Set(manifest.items.map((item) => item.kind))];
+  els.filterRow.innerHTML = "";
+
+  kinds.forEach((kind) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `filter-chip${state.filter === kind ? " is-active" : ""}`;
+    button.textContent = KIND_LABELS[kind] || kind;
+    button.addEventListener("click", () => {
+      state.filter = kind;
+      renderFilters();
+      renderGallery();
+    });
+    els.filterRow.appendChild(button);
+  });
+}
+
+function renderGallery() {
+  const query = state.query.trim();
+  const items = manifest.items.filter((item) => {
+    const matchesQuery = !query || item.id.includes(query);
+    const matchesKind = state.filter === "all" || item.kind === state.filter;
+    return matchesQuery && matchesKind;
+  });
+
+  els.galleryGrid.innerHTML = "";
+  els.emptyState.hidden = items.length > 0;
+
+  const fragment = document.createDocumentFragment();
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `item-card${state.item?.id === item.id ? " is-active" : ""}`;
+    button.setAttribute("aria-label", `${item.id} 선택`);
+    button.innerHTML = `
+      <img src="${item.icon}" alt="" loading="lazy">
+      <span>${item.id}</span>
+    `;
+    button.addEventListener("click", () => setItem(item));
+    fragment.appendChild(button);
+  });
+
+  els.galleryGrid.appendChild(fragment);
+}
+
+function fillSelect(select, item, actions, fallbackText) {
+  const available = orderedActions(item, actions);
+  select.innerHTML = "";
+
+  if (!available.length) {
+    const option = new Option(fallbackText, "");
+    select.appendChild(option);
+    select.disabled = true;
+    return;
+  }
+
+  select.disabled = false;
+  available.forEach((action) => {
+    const option = new Option(actionLabel(action), action);
+    select.appendChild(option);
+  });
+}
+
+function renderSelection() {
+  const item = state.item;
+  const frames = currentFrames();
+
+  els.selectedTitle.textContent = item.id;
+  els.selectedKind.textContent = KIND_LABELS[item.kind] || item.kind;
+
+  fillSelect(els.moveSelect, item, MOVE_ACTIONS, "움직임 없음");
+  fillSelect(els.attackSelect, item, ATTACK_ACTIONS, "공격 없음");
+  els.moveSelect.value = MOVE_ACTIONS.includes(state.action) ? state.action : "";
+  els.attackSelect.value = ATTACK_ACTIONS.includes(state.action) ? state.action : "";
+  els.playButton.textContent = state.playing ? "||" : ">";
+  els.frameLabel.textContent = `${frames.length ? state.frame + 1 : 0} / ${frames.length}`;
+
+  renderFrame();
+}
+
+function currentFrames() {
+  return state.item?.actions[state.action] || [];
+}
+
+function renderFrame() {
+  const frames = currentFrames();
+  const frame = frames[state.frame % Math.max(frames.length, 1)];
+  els.spriteStage.innerHTML = "";
+
+  if (!frame) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  frame.files.forEach((file) => {
+    const img = document.createElement("img");
+    img.className = "sprite-layer";
+    img.src = `${state.item.dir}/${file}`;
+    img.alt = "";
+    fragment.appendChild(img);
+  });
+
+  els.spriteStage.appendChild(fragment);
+  els.frameLabel.textContent = `${state.frame + 1} / ${frames.length}`;
+}
+
+function nextFrame() {
+  const frames = currentFrames();
+  if (!frames.length) {
+    return;
+  }
+
+  state.frame = (state.frame + 1) % frames.length;
+  renderFrame();
+}
+
+function prevFrame() {
+  const frames = currentFrames();
+  if (!frames.length) {
+    return;
+  }
+
+  state.frame = (state.frame - 1 + frames.length) % frames.length;
+  renderFrame();
+}
+
+function restartTimer() {
+  window.clearInterval(state.timer);
+  state.timer = null;
+
+  if (state.playing && currentFrames().length > 1) {
+    state.timer = window.setInterval(nextFrame, state.delay);
+  }
+}
+
+function preloadAction() {
+  currentFrames().forEach((frame) => {
+    frame.files.forEach((file) => {
+      const image = new Image();
+      image.src = `${state.item.dir}/${file}`;
+    });
+  });
+}
+
+function syncUrl() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("item", state.item.id);
+    url.searchParams.set("motion", state.action);
+    window.history.replaceState(null, "", url);
+  } catch {
+    // Some browsers restrict history changes on local file URLs.
+  }
+}
+
+function initFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const requestedItem = params.get("item");
+  const requestedMotion = params.get("motion");
+  const item = byId(requestedItem) || manifest.items[0];
+  setItem(item, requestedMotion);
+}
+
+function bindEvents() {
+  els.searchInput.addEventListener("input", (event) => {
+    state.query = event.target.value.replace(/\D/g, "");
+    event.target.value = state.query;
+    renderGallery();
+  });
+
+  els.moveSelect.addEventListener("change", (event) => setAction(event.target.value));
+  els.attackSelect.addEventListener("change", (event) => setAction(event.target.value));
+
+  els.playButton.addEventListener("click", () => {
+    state.playing = !state.playing;
+    renderSelection();
+    restartTimer();
+  });
+
+  els.prevButton.addEventListener("click", () => {
+    state.playing = false;
+    prevFrame();
+    renderSelection();
+    restartTimer();
+  });
+
+  els.nextButton.addEventListener("click", () => {
+    state.playing = false;
+    nextFrame();
+    renderSelection();
+    restartTimer();
+  });
+
+  els.speedRange.addEventListener("input", (event) => {
+    state.delay = Number(event.target.value);
+    restartTimer();
+  });
+}
+
+function init() {
+  if (!manifest?.items?.length) {
+    els.itemCount.textContent = "아이템을 찾지 못했습니다.";
+    return;
+  }
+
+  els.itemCount.textContent = `${manifest.totalItems.toLocaleString("ko-KR")}개 아이템`;
+  renderFilters();
+  bindEvents();
+  initFromUrl();
+}
+
+init();
