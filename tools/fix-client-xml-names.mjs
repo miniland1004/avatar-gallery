@@ -21,10 +21,6 @@ function imgIdToEqpId(imgId) {
   return String(Number(imgId));
 }
 
-function displayName(no) {
-  return `미니랜드 No.${String(no).padStart(2, "0")}`;
-}
-
 function clientDisplayName(no) {
   return `\uBBF8\uB2C8\uB79C\uB4DC No.${String(no).padStart(2, "0")}`;
 }
@@ -63,8 +59,11 @@ function parseDuplicateReport() {
 }
 
 function restoreXmlFileNames(kept) {
+  const itemsToRename = kept.filter(entry => entry.currentId !== entry.oldId);
+  if (itemsToRename.length === 0) return;
+
   const tempSuffix = `.__restore_code_tmp_${Date.now()}`;
-  const tempEntries = kept.map((entry) => ({
+  const tempEntries = itemsToRename.map((entry) => ({
     ...entry,
     currentPath: path.join(xmlRoot, `${entry.currentId}.img.xml`),
     tempPath: path.join(xmlRoot, `${entry.currentId}.img.xml${tempSuffix}`),
