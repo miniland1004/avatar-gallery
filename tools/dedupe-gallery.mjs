@@ -84,9 +84,10 @@ function buildPlan(items) {
 
   const removedIds = new Set(duplicateGroups.flatMap((group) => group.slice(1).map((item) => item.id)));
   const keptItems = items.filter((item) => !removedIds.has(item.id));
-  const renames = keptItems.map((item) => ({
+  const baseId = Number(items[0].id);
+  const renames = keptItems.map((item, index) => ({
     oldId: item.id,
-    newId: item.id,
+    newId: formatId(baseId + index),
   }));
 
   return {
@@ -98,6 +99,7 @@ function buildPlan(items) {
 }
 
 function writeReport(items, plan) {
+  const renameByOldId = new Map(plan.renames.map((entry) => [entry.oldId, entry.newId]));
   const lines = [];
 
   lines.push("Avatar Gallery Duplicate Removal Report");
@@ -119,7 +121,7 @@ function writeReport(items, plan) {
     const keep = group[0];
     const removed = group.slice(1);
     lines.push(
-      `${String(index + 1).padStart(2, "0")}. KEEP ${keep.id} -> ${keep.id}; REMOVE ${removed
+      `${String(index + 1).padStart(2, "0")}. KEEP ${keep.id} -> ${renameByOldId.get(keep.id)}; REMOVE ${removed
         .map((item) => item.id)
         .join(", ")}`,
     );
@@ -127,9 +129,8 @@ function writeReport(items, plan) {
 
   lines.push("");
   lines.push("[Renumber map]");
-  plan.renames.forEach((entry) => {
-    const no = Number(entry.oldId) - 1009000;
-    lines.push(`No.${String(no).padStart(2, "0")} ${entry.oldId} -> ${entry.newId}`);
+  plan.renames.forEach((entry, index) => {
+    lines.push(`No.${String(index + 1).padStart(2, "0")} ${entry.oldId} -> ${entry.newId}`);
   });
 
   fs.writeFileSync(reportPath, `${lines.join("\n")}\n`, "utf8");
@@ -139,6 +140,26 @@ function removePath(targetPath) {
   const resolved = path.resolve(targetPath);
   assertInside(resolved, workspaceRoot);
   fs.rmSync(resolved, { recursive: true, force: true });
+}
+
+function movePath(fromPath, toPath) {
+  const resolvedFrom = path.resolve(fromPath);
+  const resolvedTo = path.resolve(toPath);
+  assertInside(resolvedFrom, workspaceRoot);
+  assertInside(resolvedTo, workspaceRoot);
+  fs.renameSync(resolvedFrom, resolvedTo);
+}
+
+function updateXmlRootName(filePath, oldId, newId) {
+  const xml = fs.readFileSync(filePath, "utf8");
+  const from = `<imgdir name="${oldId}.img">`;
+  const to = `<imgdir name="${newId}.img">`;
+
+  if (!xml.includes(from)) {
+    throw new Error(`Cannot find XML root name ${from} in ${filePath}`);
+  }
+
+  fs.writeFileSync(filePath, xml.replace(from, to), "utf8");
 }
 
 function applyPlan(plan) {
@@ -153,6 +174,30 @@ function applyPlan(plan) {
       removePath(item.dirPath);
       removePath(item.xmlPath);
     }
+  }
+
+  const tempSuffix = `.__dedupe_tmp_${Date.now()}`;
+  const tempEntries = plan.keptItems.map((item) => ({
+    item,
+    tempDirPath: path.join(galleryRoot, `${item.id}.img${tempSuffix}`),
+    tempXmlPath: path.join(xmlRoot, `${item.id}.img.xml${tempSuffix}`),
+  }));
+
+  for (const entry of tempEntries) {
+    movePath(entry.item.dirPath, entry.tempDirPath);
+    movePath(entry.item.xmlPath, entry.tempXmlPath);
+  }
+
+  const renameByOldId = new Map(plan.renames.map((entry) => [entry.oldId, entry.newId]));
+
+  for (const entry of tempEntries) {
+    const newId = renameByOldId.get(entry.item.id);
+    const newDirPath = path.join(galleryRoot, `${newId}.img`);
+    const newXmlPath = path.join(xmlRoot, `${newId}.img.xml`);
+
+    movePath(entry.tempDirPath, newDirPath);
+    movePath(entry.tempXmlPath, newXmlPath);
+    updateXmlRootName(newXmlPath, entry.item.id, newId);
   }
 }
 
@@ -183,7 +228,7 @@ console.log(`Report: ${reportPath}`);
 
 if (apply) {
   applyPlan(plan);
-  console.log("Applied duplicate removal.");
+  console.log("Applied duplicate removal and renumbering.");
 } else {
   console.log("Dry run only. Re-run with --apply to modify files.");
 }
